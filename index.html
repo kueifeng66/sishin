@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Pinpoint — 3D Earth User Locator</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link
+    href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <!-- Full-bleed 3D Earth Stage -->
+    <main class="globe-stage" id="globeStage" aria-label="Interactive 3D Earth Globe">
+      <canvas id="starfield" class="starfield-canvas" aria-hidden="true"></canvas>
+      <div id="globe" class="globe-canvas" role="application" aria-label="Interactive 3D Earth Globe"></div>
+      <div class="stage-vignette" aria-hidden="true"></div>
+
+      <!-- Compact Floating User Pill (shown when panel is collapsed & user is pinpointed) -->
+      <button
+        type="button"
+        id="floatingUserPill"
+        class="floating-user-pill is-hidden"
+        aria-label="Open Pinpoint details panel"
+      >
+        <span class="fup-icon" aria-hidden="true">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 17s5.5-4.8 5.5-9a5.5 5.5 0 1 0-11 0c0 4.2 5.5 9 5.5 9Z" />
+            <circle cx="10" cy="8" r="2" />
+          </svg>
+        </span>
+        <span class="fup-body">
+          <span class="fup-name" id="fupName">—</span>
+          <span class="fup-coords" id="fupCoords">—</span>
+        </span>
+        <span class="fup-chevron" aria-hidden="true">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M6 3.5 10.5 8 6 12.5" />
+          </svg>
+        </span>
+      </button>
+
+      <!-- Top-Right Map Style & 3D Layer Controls -->
+      <div class="hud-top-right" role="toolbar" aria-label="Map visual layers">
+        <div class="segmented-control" role="radiogroup" aria-label="Map imagery mode">
+          <button type="button" class="seg-btn is-active" data-map-mode="satellite" aria-pressed="true">
+            Satellite
+          </button>
+          <button type="button" class="seg-btn" data-map-mode="street" aria-pressed="false">
+            3D Street
+          </button>
+          <button type="button" class="seg-btn" data-map-mode="night" aria-pressed="false">
+            Night
+          </button>
+        </div>
+
+        <div class="layer-toggles">
+          <button
+            type="button"
+            id="toggleBuildingsBtn"
+            class="hud-chip"
+            aria-pressed="false"
+            title="Toggle 3D buildings at street level"
+          >
+            <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 15h12M4.5 15V6.5l4.5-2.5 4.5 2.5V15M9 4v11M6.5 9h.01M11.5 9h.01M6.5 12h.01M11.5 12h.01" />
+            </svg>
+            <span>3D Buildings</span>
+          </button>
+          <button
+            type="button"
+            id="toggleLabelsBtn"
+            class="hud-chip is-active"
+            aria-pressed="true"
+            title="Toggle place and street labels"
+          >
+            <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 5h12M6 9h9M4 13h7" />
+            </svg>
+            <span>Labels</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Right-Side Camera & Navigation Controls -->
+      <div class="hud-controls" role="toolbar" aria-label="Globe camera controls">
+        <div class="hud-control-group">
+          <button type="button" id="zoomInBtn" class="hud-icon-btn" aria-label="Zoom in" title="Zoom in">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <path d="M10 4.5v11M4.5 10h11" />
+            </svg>
+          </button>
+          <button type="button" id="zoomOutBtn" class="hud-icon-btn" aria-label="Zoom out" title="Zoom out">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <path d="M4.5 10h11" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="hud-control-group">
+          <button type="button" id="streetDiveBtn" class="hud-icon-btn hud-icon-btn--accent" aria-label="Dive to street level" title="Dive to street level">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10 17s5.5-4.8 5.5-9a5.5 5.5 0 1 0-11 0c0 4.2 5.5 9 5.5 9Z" />
+              <circle cx="10" cy="8" r="2" />
+            </svg>
+          </button>
+          <button type="button" id="tiltToggleBtn" class="hud-icon-btn" aria-label="Toggle 3D tilt view" title="Toggle 2D / 3D perspective tilt">
+            <span class="hud-text-badge" id="tiltBadge">3D</span>
+          </button>
+          <button type="button" id="compassBtn" class="hud-icon-btn" aria-label="Reset orientation to North" title="Reset orientation to North">
+            <svg id="compassNeedle" class="compass-svg" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <polygon points="10,2.5 13,10 10,8.7 7,10" fill="#f43f5e" />
+              <polygon points="10,17.5 13,10 10,11.3 7,10" fill="rgba(226,232,240,0.65)" />
+            </svg>
+          </button>
+          <button type="button" id="spaceViewBtn" class="hud-icon-btn" aria-label="Return to orbital space view" title="Return to orbital Earth view">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="10" cy="10" r="6.8" />
+              <path d="M3.6 10h12.8M10 3.2c2 2 2.9 4.3 2.9 6.8S12 14.8 10 16.8C8 14.8 7.1 12.5 7.1 10S8 5.2 10 3.2Z" />
+            </svg>
+          </button>
+          <button type="button" id="spinToggleBtn" class="hud-icon-btn" aria-label="Pause Earth rotation" title="Pause or resume Earth rotation">
+            <svg id="spinIconPause" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <rect x="5.5" y="4.5" width="3" height="11" rx="1" />
+              <rect x="11.5" y="4.5" width="3" height="11" rx="1" />
+            </svg>
+            <svg id="spinIconPlay" class="is-hidden" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M6.5 4.8a.8.8 0 0 1 1.22-.68l8.1 5.2a.8.8 0 0 1 0 1.36l-8.1 5.2A.8.8 0 0 1 6.5 15.2V4.8Z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Bottom-Right Altitude Scrubber & Orbital Telemetry -->
+      <div class="hud-bottom-bar" aria-label="Altitude and coordinate telemetry">
+        <div class="altitude-tiers" role="group" aria-label="Quick zoom altitude levels">
+          <button type="button" class="tier-btn is-active" data-tier="space">Orbit</button>
+          <button type="button" class="tier-btn" data-tier="region">Region</button>
+          <button type="button" class="tier-btn" data-tier="city">City</button>
+          <button type="button" class="tier-btn" data-tier="street">Street</button>
+        </div>
+
+        <div class="telemetry-divider" aria-hidden="true"></div>
+
+        <div class="telemetry-readouts">
+          <span class="telemetry-item">
+            <span class="telemetry-label">ALT</span>
+            <span class="telemetry-value" id="hudAltitude">12,740 km</span>
+          </span>
+          <span class="telemetry-item">
+            <span class="telemetry-label">POS</span>
+            <span class="telemetry-value" id="hudCoords">25.03° N, 121.56° E</span>
+          </span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bookmark Tab (anchored to left edge when panel is collapsed) -->
+    <button
+      type="button"
+      id="bookmarkTab"
+      class="bookmark-tab"
+      aria-expanded="true"
+      aria-controls="explorerPanel"
+      aria-label="Open Pinpoint user bookmark"
+    >
+      <span class="bookmark-accent-bar" aria-hidden="true"></span>
+      <span class="bookmark-chevron" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 3.5 10.5 8 6 12.5" />
+        </svg>
+      </span>
+      <span class="bookmark-pin-icon" aria-hidden="true">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10 17s5.5-4.8 5.5-9a5.5 5.5 0 1 0-11 0c0 4.2 5.5 9 5.5 9Z" />
+          <circle cx="10" cy="8" r="2" />
+        </svg>
+      </span>
+      <span class="bookmark-coords" id="bookmarkCoords"></span>
+      <span class="bookmark-divider" aria-hidden="true"></span>
+      <span class="bookmark-label" id="bookmarkLabel">PINPOINT</span>
+      <span class="bookmark-notch" aria-hidden="true"></span>
+    </button>
+
+    <!-- Collapsible Left Pinpoint Panel -->
+    <aside
+      id="explorerPanel"
+      class="explorer-panel"
+      aria-label="User Pinpoint and Firebase Sync"
+    >
+      <header class="panel-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none">
+              <defs>
+                <linearGradient id="brandOrbitGrad" x1="4" y1="4" x2="28" y2="28" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stop-color="#38bdf8" />
+                  <stop offset="100%" stop-color="#818cf8" />
+                </linearGradient>
+              </defs>
+              <circle cx="16" cy="16" r="10.5" stroke="url(#brandOrbitGrad)" stroke-width="1.8" />
+              <path d="M16 21s4.5-3.9 4.5-7.2a4.5 4.5 0 1 0-9 0C11.5 17.1 16 21 16 21Z" stroke="#38bdf8" stroke-width="1.6" />
+              <circle cx="16" cy="13.8" r="1.5" fill="#fbbf24" />
+            </svg>
+          </span>
+          <div class="brand-text">
+            <h1>Pinpoint Earth</h1>
+            <p class="brand-sub">3D Globe + Firebase Sync</p>
+          </div>
+        </div>
+
+        <div class="panel-header-actions">
+          <button
+            type="button"
+            id="collapsePanelBtn"
+            class="collapse-btn"
+            aria-label="Collapse panel into bookmark tab"
+            title="Collapse to bookmark tab"
+          >
+            <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M11.5 4.25 6.75 9l4.75 4.75" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div class="panel-scroll">
+        <!-- Prompt when user hasn't pinpointed yet -->
+        <section id="welcomeCard" class="welcome-card">
+          <div class="welcome-badge">
+            <span class="pulse-dot" aria-hidden="true"></span>
+            Ready to Pinpoint
+          </div>
+          <p class="welcome-copy">
+            Enter your name and share your location to pinpoint yourself on the 3D globe and save your coordinates to Firebase.
+          </p>
+          <button type="button" id="openDialogBtn" class="card-action-btn card-action-btn--primary" style="inline-size: 100%;">
+            Pinpoint My Location
+          </button>
+        </section>
+
+        <!-- Active User Pinpoint Card -->
+        <section id="pinpointCard" class="pinpoint-card is-hidden" aria-live="polite">
+          <div class="pinpoint-header">
+            <div>
+              <p class="pinpoint-eyebrow">Active Pinpoint</p>
+              <h2 id="userDisplayName" class="user-display-name">—</h2>
+            </div>
+            <span id="firebaseBadge" class="firebase-badge">Syncing…</span>
+          </div>
+
+          <div class="coords-grid">
+            <div class="metric-tile">
+              <span class="metric-label">Latitude</span>
+              <span class="metric-val" id="userLatVal">—</span>
+            </div>
+            <div class="metric-tile">
+              <span class="metric-label">Longitude</span>
+              <span class="metric-val" id="userLonVal">—</span>
+            </div>
+            <div class="metric-tile metric-tile--full">
+              <span class="metric-label">Local Time</span>
+              <span class="metric-val" id="userTimeVal">—</span>
+            </div>
+          </div>
+
+          <div class="pinpoint-actions">
+            <button type="button" id="cardStreetZoomBtn" class="card-action-btn card-action-btn--primary">
+              <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M9 15.5s4.8-4.2 4.8-7.8a4.8 4.8 0 1 0-9.6 0c0 3.6 4.8 7.8 4.8 7.8Z" />
+                <circle cx="9" cy="7.7" r="1.7" />
+              </svg>
+              <span>Dive to Street Level</span>
+            </button>
+            <button type="button" id="cardUpdateBtn" class="card-action-btn">
+              <span>Update</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- Recent Pinpoints from Firebase -->
+        <section aria-label="Recent pinpoints stored in Firebase">
+          <div class="section-heading">
+            <h2>Saved Pinpoints</h2>
+            <span class="section-meta" id="recentCountMeta">0 records</span>
+          </div>
+          <ul id="recentList" class="recent-list"></ul>
+          <p id="emptyRecentMsg" class="empty-recent">No pinpoints recorded in Firebase yet.</p>
+        </section>
+      </div>
+    </aside>
+  </div>
+
+  <!-- Native Modal Dialog for Retrieving User Name & Location -->
+  <dialog id="pinpointDialog" aria-labelledby="pinpointDialogTitle">
+    <div class="dialog-header">
+      <div>
+        <h2 id="pinpointDialogTitle" class="dialog-title">Pinpoint Your Location</h2>
+        <p class="dialog-subtitle">
+          Provide your name and allow location access to mark your spot on the 3D globe and save it to Firebase.
+        </p>
+      </div>
+      <button type="button" id="closeDialogBtn" class="dialog-close-btn" aria-label="Close dialog">
+        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+      </button>
+    </div>
+
+    <form id="pinpointForm" class="dialog-form">
+      <div class="field">
+        <label for="userNameInput">Your Name <span aria-hidden="true">*</span></label>
+        <input
+          type="text"
+          id="userNameInput"
+          name="userName"
+          autocomplete="name"
+          placeholder="e.g., Alex Chen"
+          required
+          maxlength="80"
+          aria-invalid="false"
+          data-error="nameError"
+        />
+        <div id="nameError" class="error-msg">
+          <span role="img" aria-label="Error">❌</span> Please enter your name.
+        </div>
+      </div>
+
+      <div id="geoStatusBox" class="geo-status-box" role="status" aria-live="polite">
+        <span id="geoStatusText">Detecting your GPS coordinates…</span>
+        <button type="button" id="retryGeoBtn" class="card-action-btn" style="min-height: 34px; padding: 6px 10px; font-size: 0.76rem;">
+          Detect
+        </button>
+      </div>
+
+      <!-- Manual fallback shown only if browser geolocation is denied or unavailable -->
+      <div id="manualCoordsSection" class="manual-coords-grid is-hidden">
+        <div class="field">
+          <label for="manualLatInput">Latitude <span aria-hidden="true">*</span></label>
+          <input
+            type="number"
+            id="manualLatInput"
+            name="manualLat"
+            step="any"
+            min="-90"
+            max="90"
+            placeholder="e.g., 25.0339"
+            aria-invalid="false"
+            data-error="latError"
+          />
+          <div id="latError" class="error-msg">
+            <span role="img" aria-label="Error">❌</span> Enter a latitude between -90 and 90.
+          </div>
+        </div>
+        <div class="field">
+          <label for="manualLonInput">Longitude <span aria-hidden="true">*</span></label>
+          <input
+            type="number"
+            id="manualLonInput"
+            name="manualLon"
+            step="any"
+            min="-180"
+            max="180"
+            placeholder="e.g., 121.5645"
+            aria-invalid="false"
+            data-error="lonError"
+          />
+          <div id="lonError" class="error-msg">
+            <span role="img" aria-label="Error">❌</span> Enter a longitude between -180 and 180.
+          </div>
+        </div>
+      </div>
+
+      <div class="dialog-actions">
+        <button type="submit" id="submitPinpointBtn" class="btn-submit">
+          Pinpoint &amp; Save to Firebase
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js"></script>
+  <script src="globe.js"></script>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js';
+    import { getAnalytics } from 'https://www.gstatic.com/firebasejs/10.11.0/firebase-analytics.js';
+    import {
+      getDatabase,
+      ref,
+      get,
+      update,
+      onValue,
+      query,
+      limitToLast,
+      serverTimestamp
+    } from 'https://www.gstatic.com/firebasejs/10.11.0/firebase-database.js';
+
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDNvOPXE1MiypxUiXP09C8PybGzekldNn8",
+      authDomain: "sishin-a38f3.firebaseapp.com",
+      databaseURL: "https://sishin-a38f3-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "sishin-a38f3",
+      storageBucket: "sishin-a38f3.firebasestorage.app",
+      messagingSenderId: "545754396319",
+      appId: "1:545754396319:web:a05d62107fe8f711d3d4aa",
+      measurementId: "G-XY7BX437B0"
+    };
+
+
+    const app = initializeApp(firebaseConfig);
+    try {
+      getAnalytics(app);
+    } catch {
+      // Analytics may be unavailable in restricted or non-HTTPS local environments
+    }
+    const db = getDatabase(app);
+    const pinpointsRef = ref(db, 'pinpoints');
+
+    // DOM References
+    const dom = {
+      appShell: document.getElementById('appShell'),
+      explorerPanel: document.getElementById('explorerPanel'),
+      bookmarkTab: document.getElementById('bookmarkTab'),
+      bookmarkLabel: document.getElementById('bookmarkLabel'),
+      bookmarkCoords: document.getElementById('bookmarkCoords'),
+      collapsePanelBtn: document.getElementById('collapsePanelBtn'),
+
+      floatingUserPill: document.getElementById('floatingUserPill'),
+      fupName: document.getElementById('fupName'),
+      fupCoords: document.getElementById('fupCoords'),
+
+      welcomeCard: document.getElementById('welcomeCard'),
+      openDialogBtn: document.getElementById('openDialogBtn'),
+      pinpointCard: document.getElementById('pinpointCard'),
+      userDisplayName: document.getElementById('userDisplayName'),
+      firebaseBadge: document.getElementById('firebaseBadge'),
+      userLatVal: document.getElementById('userLatVal'),
+      userLonVal: document.getElementById('userLonVal'),
+      userTimeVal: document.getElementById('userTimeVal'),
+      cardStreetZoomBtn: document.getElementById('cardStreetZoomBtn'),
+      cardUpdateBtn: document.getElementById('cardUpdateBtn'),
+
+      recentList: document.getElementById('recentList'),
+      recentCountMeta: document.getElementById('recentCountMeta'),
+      emptyRecentMsg: document.getElementById('emptyRecentMsg'),
+
+      pinpointDialog: document.getElementById('pinpointDialog'),
+      closeDialogBtn: document.getElementById('closeDialogBtn'),
+      pinpointForm: document.getElementById('pinpointForm'),
+      userNameInput: document.getElementById('userNameInput'),
+      geoStatusBox: document.getElementById('geoStatusBox'),
+      geoStatusText: document.getElementById('geoStatusText'),
+      retryGeoBtn: document.getElementById('retryGeoBtn'),
+      manualCoordsSection: document.getElementById('manualCoordsSection'),
+      manualLatInput: document.getElementById('manualLatInput'),
+      manualLonInput: document.getElementById('manualLonInput'),
+      submitPinpointBtn: document.getElementById('submitPinpointBtn'),
+
+      mapModeBtns: document.querySelectorAll('[data-map-mode]'),
+      toggleBuildingsBtn: document.getElementById('toggleBuildingsBtn'),
+      toggleLabelsBtn: document.getElementById('toggleLabelsBtn'),
+      zoomInBtn: document.getElementById('zoomInBtn'),
+      zoomOutBtn: document.getElementById('zoomOutBtn'),
+      streetDiveBtn: document.getElementById('streetDiveBtn'),
+      tiltToggleBtn: document.getElementById('tiltToggleBtn'),
+      tiltBadge: document.getElementById('tiltBadge'),
+      compassBtn: document.getElementById('compassBtn'),
+      compassNeedle: document.getElementById('compassNeedle'),
+      spaceViewBtn: document.getElementById('spaceViewBtn'),
+      spinToggleBtn: document.getElementById('spinToggleBtn'),
+      spinIconPause: document.getElementById('spinIconPause'),
+      spinIconPlay: document.getElementById('spinIconPlay'),
+      tierBtns: document.querySelectorAll('.tier-btn'),
+      hudAltitude: document.getElementById('hudAltitude'),
+      hudCoords: document.getElementById('hudCoords')
+    };
+
+    const STORAGE_KEY = 'pinpoint_user_name';
+
+    const state = {
+      isCollapsed: false,
+      detectedCoords: null,
+      isDetectingGeo: false,
+      activeUser: null,
+      trackedUserName: null,
+      watchId: null,
+      heartbeatTimer: null,
+      lastSentTime: 0,
+      wakeLock: null
+    };
+
+    function formatAltitude(meters) {
+      if (meters >= 100000) return `${Math.round(meters / 1000).toLocaleString()} km`;
+      if (meters >= 10000) return `${(meters / 1000).toFixed(0)} km`;
+      if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+      return `${Math.round(meters)} m`;
+    }
+
+    function formatCoords(lat, lon) {
+      const latDir = lat >= 0 ? 'N' : 'S';
+      const lonDir = lon >= 0 ? 'E' : 'W';
+      return `${Math.abs(lat).toFixed(4)}° ${latDir}, ${Math.abs(lon).toFixed(4)}° ${lonDir}`;
+    }
+
+    function formatLocalTime(value) {
+      let date;
+      if (value instanceof Date) {
+        date = value;
+      } else if (typeof value === 'number' && value > 0) {
+        date = new Date(value);
+      } else if (typeof value === 'string' && value) {
+        const parsed = Date.parse(value);
+        date = Number.isNaN(parsed) ? new Date() : new Date(parsed);
+      } else {
+        date = new Date();
+      }
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    }
+
+    function getExpandedPanelPadding() {
+      if (window.innerWidth < 640) return 0;
+      const width = dom.explorerPanel ? dom.explorerPanel.offsetWidth : 420;
+      return Math.min(width, Math.floor(window.innerWidth * 0.48));
+    }
+
+    function setPanelCollapsed(collapsed, animate = true) {
+      state.isCollapsed = Boolean(collapsed);
+      dom.appShell.classList.toggle('is-collapsed', state.isCollapsed);
+      dom.bookmarkTab.setAttribute('aria-expanded', String(!state.isCollapsed));
+      dom.explorerPanel.setAttribute('aria-hidden', String(state.isCollapsed));
+
+      if (globe) {
+        const targetPadding = state.isCollapsed ? 0 : getExpandedPanelPadding();
+        globe.setPanelPadding(targetPadding, animate);
+      }
+    }
+
+    const globe = new window.EarthGlobe({
+      containerId: 'globe',
+      starfieldId: 'starfield',
+      initialPaddingLeft: getExpandedPanelPadding(),
+
+      onTelemetry({ lat, lon, pitch, bearing, altitudeMeters, tier }) {
+        dom.hudAltitude.textContent = formatAltitude(altitudeMeters);
+        dom.hudCoords.textContent = formatCoords(lat, lon);
+        dom.compassNeedle.style.transform = `rotate(${-bearing}deg)`;
+        dom.tiltBadge.textContent = pitch > 18 ? '3D' : '2D';
+        dom.tiltToggleBtn.classList.toggle('is-active', pitch > 18);
+
+        dom.tierBtns.forEach((btn) => {
+          btn.classList.toggle('is-active', btn.dataset.tier === tier);
+        });
+      },
+
+      onMarkerClick(loc) {
+        if (!loc) return;
+        globe.diveToStreetLevel(loc.lat, loc.lng);
+      },
+
+      onSpinChange(spinning) {
+        dom.spinIconPause.classList.toggle('is-hidden', !spinning);
+        dom.spinIconPlay.classList.toggle('is-hidden', spinning);
+        const label = spinning ? 'Pause Earth rotation' : 'Resume Earth rotation';
+        dom.spinToggleBtn.setAttribute('aria-label', label);
+        dom.spinToggleBtn.setAttribute('title', label);
+      },
+
+      onBuildingsChange(visible) {
+        dom.toggleBuildingsBtn.classList.toggle('is-active', visible);
+        dom.toggleBuildingsBtn.setAttribute('aria-pressed', String(visible));
+      }
+    });
+
+    function setupAccessibleValidation() {
+      const linkError = (el, shown) => {
+        const errorId = el.dataset.error;
+        if (!errorId) return;
+        const ids = (el.getAttribute('aria-describedby') || '')
+          .split(/\s+/)
+          .filter((id) => id && id !== errorId);
+        if (shown) ids.push(errorId);
+        if (ids.length) el.setAttribute('aria-describedby', ids.join(' '));
+        else el.removeAttribute('aria-describedby');
+      };
+
+      const announcer = document.createElement('div');
+      announcer.setAttribute('aria-live', 'polite');
+      announcer.classList.add('visually-hidden');
+      document.body.append(announcer);
+      let announceTimer;
+      let announcedField;
+
+      const spokenText = (node) => {
+        const copy = node.cloneNode(true);
+        copy.querySelectorAll('[aria-hidden="true"]').forEach((n) => n.remove());
+        copy.querySelectorAll('[role="img"][aria-label]').forEach((n) => {
+          n.replaceWith(`${n.getAttribute('aria-label')}: `);
+        });
+        return copy.textContent.replace(/\s+/g, ' ').trim();
+      };
+
+      const announceError = (el) => {
+        const error = document.getElementById(el.dataset.error);
+        if (!error) return;
+        const label = el.labels?.[0] ? `${spokenText(el.labels[0])}: ` : '';
+        clearTimeout(announceTimer);
+        announcer.textContent = '';
+        announcedField = el;
+        announceTimer = setTimeout(() => {
+          announcer.textContent = label + spokenText(error);
+        }, 500);
+      };
+
+      const flagged = new WeakSet();
+      const announced = new WeakSet();
+      const supportsUserInvalid = CSS.supports('selector(:user-invalid)');
+
+      const syncAria = (el, announce = false, forceInvalid = false) => {
+        if (!el.matches?.('input, select, textarea')) return;
+        const invalid = supportsUserInvalid
+          ? el.matches(':user-invalid')
+          : forceInvalid || (flagged.has(el) && !el.validity.valid);
+
+        if (!supportsUserInvalid && (forceInvalid || flagged.has(el))) {
+          el.classList.toggle('user-invalid-fallback', !el.validity.valid);
+          el.classList.toggle('user-valid-fallback', el.validity.valid);
+        }
+
+        if (invalid) {
+          if (announce && !announced.has(el)) {
+            announceError(el);
+            announced.add(el);
+          }
+          el.setAttribute('aria-invalid', 'true');
+          linkError(el, true);
+          flagged.add(el);
+        } else if (flagged.has(el) || el.getAttribute('aria-invalid') !== 'true') {
+          el.setAttribute('aria-invalid', 'false');
+          linkError(el, false);
+          flagged.delete(el);
+          announced.delete(el);
+          if (announcedField === el) {
+            clearTimeout(announceTimer);
+            announcer.textContent = '';
+          }
+        }
+      };
+
+      dom.pinpointForm.querySelectorAll('input').forEach((el) => syncAria(el));
+
+      dom.pinpointForm.addEventListener(
+        'blur',
+        (e) => {
+          if (!supportsUserInvalid && e.target.value !== '') flagged.add(e.target);
+          syncAria(e.target, true);
+        },
+        true
+      );
+
+      dom.pinpointForm.addEventListener('input', (e) => {
+        if (e.target.hasAttribute('aria-invalid')) syncAria(e.target);
+      });
+
+      dom.pinpointForm.addEventListener(
+        'invalid',
+        (e) => {
+          announced.add(e.target);
+          flagged.add(e.target);
+          syncAria(e.target, false, true);
+        },
+        true
+      );
+    }
+
+    function setManualCoordsRequired(required) {
+      dom.manualCoordsSection.classList.toggle('is-hidden', !required);
+      dom.manualLatInput.required = required;
+      dom.manualLonInput.required = required;
+    }
+
+    function requestBrowserLocation() {
+      if (!('geolocation' in navigator)) {
+        dom.geoStatusBox.className = 'geo-status-box is-error';
+        dom.geoStatusText.textContent = 'Geolocation is not supported by this browser. Enter coordinates below.';
+        setManualCoordsRequired(true);
+        return Promise.resolve(null);
+      }
+
+      state.isDetectingGeo = true;
+      dom.geoStatusBox.className = 'geo-status-box';
+      dom.geoStatusText.textContent = 'Detecting your GPS coordinates…';
+
+      return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            state.isDetectingGeo = false;
+            const latitude = Number(position.coords.latitude.toFixed(6));
+            const longitude = Number(position.coords.longitude.toFixed(6));
+            state.detectedCoords = { latitude, longitude };
+
+            dom.geoStatusBox.className = 'geo-status-box is-ready';
+            dom.geoStatusText.textContent = `Location ready: ${formatCoords(latitude, longitude)}`;
+            setManualCoordsRequired(false);
+            resolve(state.detectedCoords);
+          },
+          (error) => {
+            state.isDetectingGeo = false;
+            dom.geoStatusBox.className = 'geo-status-box is-error';
+            const reason =
+              error.code === error.PERMISSION_DENIED
+                ? 'Location permission denied. Enter coordinates manually or click Detect to retry.'
+                : 'Unable to detect GPS location. Enter coordinates manually or retry.';
+            dom.geoStatusText.textContent = reason;
+            setManualCoordsRequired(true);
+            resolve(null);
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 60000
+          }
+        );
+      });
+    }
+
+    function updateUIWithPinpoint(name, lat, lon, firebaseStateText = 'Syncing…', firebaseStatusClass = '', opts = {}) {
+      const formatted = formatCoords(lat, lon);
+      const shortCoords = `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
+      const localTime = opts.localTime || formatLocalTime(opts.timestamp || new Date());
+
+      globe.setUserPinpointMarker(lat, lon, name, localTime);
+      if (!opts.silent) {
+        globe.flyToLocation(lat, lon, {
+          zoom: opts.zoom ?? 14.5,
+          pitch: opts.pitch ?? 52,
+          bearing: opts.bearing ?? -14,
+          paddingLeft: 0
+        });
+      }
+
+      dom.bookmarkLabel.textContent = name.toUpperCase();
+      dom.bookmarkCoords.textContent = shortCoords;
+
+      dom.floatingUserPill.classList.remove('is-hidden');
+      dom.fupName.textContent = name;
+      dom.fupCoords.textContent = formatted;
+
+      dom.welcomeCard.classList.add('is-hidden');
+      dom.pinpointCard.classList.remove('is-hidden');
+      dom.userDisplayName.textContent = name;
+      dom.userLatVal.textContent = lat.toFixed(6);
+      dom.userLonVal.textContent = lon.toFixed(6);
+      dom.userTimeVal.textContent = localTime;
+
+      dom.firebaseBadge.textContent = firebaseStateText;
+      dom.firebaseBadge.className = `firebase-badge ${firebaseStatusClass}`.trim();
+
+      if (!opts.silent) {
+        setPanelCollapsed(true, true);
+      }
+    }
+
+    async function requestWakeLock() {
+      if (!('wakeLock' in navigator) || state.wakeLock) return;
+      try {
+        state.wakeLock = await navigator.wakeLock.request('screen');
+        state.wakeLock.addEventListener('release', () => {
+          state.wakeLock = null;
+        });
+      } catch {
+        // Wake Lock may be unavailable on low battery or background tabs
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && state.trackedUserName) {
+        requestWakeLock();
+      }
+    });
+
+    function startContinuousTracking(userName) {
+      const cleanName = userName.trim();
+      if (!cleanName) return;
+
+      state.trackedUserName = cleanName;
+      try {
+        localStorage.setItem(STORAGE_KEY, cleanName);
+      } catch {
+        // Ignore storage errors in private browsing
+      }
+
+      requestWakeLock();
+
+      if (!('geolocation' in navigator)) return;
+
+      if (state.watchId !== null) {
+        navigator.geolocation.clearWatch(state.watchId);
+        state.watchId = null;
+      }
+      if (state.heartbeatTimer) {
+        clearInterval(state.heartbeatTimer);
+        state.heartbeatTimer = null;
+      }
+
+      const pushPositionUpdate = (latitude, longitude, force = false) => {
+        const nowMs = Date.now();
+        if (!force && nowMs - state.lastSentTime < 3000) return;
+        state.lastSentTime = nowMs;
+
+        state.detectedCoords = { latitude, longitude };
+        const localTime = formatLocalTime(new Date(nowMs));
+        const activeName = state.trackedUserName;
+        if (!activeName) return;
+
+        const isViewingSelf =
+          !state.activeUser ||
+          state.activeUser.name.trim().toLowerCase() === activeName.trim().toLowerCase();
+
+        if (isViewingSelf) {
+          state.activeUser = { name: activeName, latitude, longitude, localTime };
+          updateUIWithPinpoint(activeName, latitude, longitude, 'Live Tracking', 'is-saved', {
+            localTime,
+            silent: true
+          });
+        }
+
+        saveToFirebase(activeName, latitude, longitude, localTime);
+      };
+
+      state.watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const latitude = Number(position.coords.latitude.toFixed(6));
+          const longitude = Number(position.coords.longitude.toFixed(6));
+          pushPositionUpdate(latitude, longitude, false);
+        },
+        (err) => {
+          console.warn('Live GPS watch error:', err);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
+        }
+      );
+
+      // Periodic heartbeat so stationary users still transmit live localTime & coordinates
+      state.heartbeatTimer = setInterval(() => {
+        if (!state.trackedUserName) return;
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const latitude = Number(position.coords.latitude.toFixed(6));
+            const longitude = Number(position.coords.longitude.toFixed(6));
+            pushPositionUpdate(latitude, longitude, true);
+          },
+          () => {
+            if (state.detectedCoords) {
+              pushPositionUpdate(
+                state.detectedCoords.latitude,
+                state.detectedCoords.longitude,
+                true
+              );
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 8000,
+            maximumAge: 3000
+          }
+        );
+      }, 10000);
+    }
+
+    function toPersonKey(name) {
+      return encodeURIComponent(name.trim().toLowerCase()).replace(/\./g, '%2E');
+    }
+
+    async function saveToFirebase(name, latitude, longitude, localTime) {
+      const cleanName = name.trim();
+      const normalized = cleanName.toLowerCase();
+      const personKey = toPersonKey(cleanName);
+      const now = new Date();
+
+      try {
+        const snapshot = await get(pinpointsRef);
+        const existing = snapshot.val() || {};
+        const updates = {};
+
+        // Delete any previous records for the same person (including legacy push keys)
+        for (const [key, item] of Object.entries(existing)) {
+          if (item && typeof item.name === 'string' && item.name.trim().toLowerCase() === normalized) {
+            if (key !== personKey) {
+              updates[key] = null;
+            }
+          }
+        }
+
+        // Retain only the latest location information
+        updates[personKey] = {
+          name: cleanName,
+          latitude,
+          longitude,
+          localTime: localTime || formatLocalTime(now),
+          timestamp: serverTimestamp(),
+          createdAt: now.toISOString()
+        };
+
+        await update(pinpointsRef, updates);
+        const isLiveSelf =
+          state.trackedUserName &&
+          state.trackedUserName.trim().toLowerCase() === normalized;
+        dom.firebaseBadge.textContent = isLiveSelf ? 'Live Tracking' : 'Saved to Firebase';
+        dom.firebaseBadge.className = 'firebase-badge is-saved';
+      } catch (err) {
+        console.error('Firebase write failed:', err);
+        dom.firebaseBadge.textContent = 'Firebase Error';
+        dom.firebaseBadge.className = 'firebase-badge is-error';
+      }
+    }
+
+    function subscribeToRecentPinpoints() {
+      const recentQuery = query(pinpointsRef, limitToLast(30));
+      onValue(
+        recentQuery,
+        (snapshot) => {
+          const data = snapshot.val();
+          dom.recentList.innerHTML = '';
+
+          if (!data) {
+            dom.recentCountMeta.textContent = '0 records';
+            dom.emptyRecentMsg.classList.remove('is-hidden');
+            return;
+          }
+
+          // Deduplicate by person name, keeping only the latest record per person
+          const latestByPerson = new Map();
+          Object.values(data).forEach((item) => {
+            if (!item || typeof item.latitude !== 'number' || typeof item.longitude !== 'number') return;
+            const key = (item.name || 'Anonymous').trim().toLowerCase();
+            const prev = latestByPerson.get(key);
+            const itemTime = typeof item.timestamp === 'number' ? item.timestamp : Date.parse(item.createdAt || '') || 0;
+            const prevTime = prev
+              ? typeof prev.timestamp === 'number'
+                ? prev.timestamp
+                : Date.parse(prev.createdAt || '') || 0
+              : -1;
+            if (!prev || itemTime >= prevTime) {
+              latestByPerson.set(key, item);
+            }
+          });
+
+          const entries = Array.from(latestByPerson.values()).sort((a, b) => {
+            const ta = typeof a.timestamp === 'number' ? a.timestamp : Date.parse(a.createdAt || '') || 0;
+            const tb = typeof b.timestamp === 'number' ? b.timestamp : Date.parse(b.createdAt || '') || 0;
+            return tb - ta;
+          });
+
+          dom.recentCountMeta.textContent = `${entries.length} ${entries.length === 1 ? 'record' : 'records'}`;
+          dom.emptyRecentMsg.classList.toggle('is-hidden', entries.length > 0);
+
+          entries.forEach((item) => {
+            const li = document.createElement('li');
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'recent-item-btn';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'recent-item-name';
+            nameSpan.textContent = item.name || 'Anonymous';
+
+            const metaSpan = document.createElement('span');
+            metaSpan.className = 'recent-item-meta';
+
+            const coordsSpan = document.createElement('span');
+            coordsSpan.className = 'recent-item-coords';
+            coordsSpan.textContent = `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`;
+
+            const itemLocalTime = item.localTime || formatLocalTime(item.timestamp || item.createdAt);
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'recent-item-time';
+            timeSpan.textContent = itemLocalTime;
+
+            metaSpan.append(coordsSpan, timeSpan);
+            btn.append(nameSpan, metaSpan);
+            btn.addEventListener('click', () => {
+              const displayName = item.name || 'Anonymous';
+              state.activeUser = {
+                name: displayName,
+                latitude: item.latitude,
+                longitude: item.longitude,
+                localTime: itemLocalTime
+              };
+              updateUIWithPinpoint(
+                displayName,
+                item.latitude,
+                item.longitude,
+                'Saved to Firebase',
+                'is-saved',
+                { zoom: 16.6, pitch: 58, bearing: -18, localTime: itemLocalTime }
+              );
+              globe.setAltitudeTier("street");
+            });
+
+            li.appendChild(btn);
+            dom.recentList.appendChild(li);
+          });
+
+          // If currently viewing a user on the globe, sync their live position & localTime in real time
+          if (state.activeUser && state.activeUser.name) {
+            const activeKey = state.activeUser.name.trim().toLowerCase();
+            const liveRecord = latestByPerson.get(activeKey);
+            if (liveRecord) {
+              const liveTime = liveRecord.localTime || formatLocalTime(liveRecord.timestamp || liveRecord.createdAt);
+              const isSelf =
+                state.trackedUserName &&
+                state.trackedUserName.trim().toLowerCase() === activeKey;
+              state.activeUser = {
+                name: liveRecord.name || state.activeUser.name,
+                latitude: liveRecord.latitude,
+                longitude: liveRecord.longitude,
+                localTime: liveTime
+              };
+              updateUIWithPinpoint(
+                state.activeUser.name,
+                liveRecord.latitude,
+                liveRecord.longitude,
+                isSelf ? 'Live Tracking' : 'Saved to Firebase',
+                'is-saved',
+                { localTime: liveTime, silent: true }
+              );
+            }
+          }
+        },
+        (err) => {
+          console.error('Firebase read failed:', err);
+          dom.emptyRecentMsg.textContent = 'Unable to load Firebase records.';
+        }
+      );
+    }
+
+    function openPinpointDialog() {
+      if (!dom.pinpointDialog.open) {
+        dom.pinpointDialog.showModal();
+      }
+      if (!state.detectedCoords && !state.isDetectingGeo) {
+        requestBrowserLocation();
+      }
+    }
+
+    dom.closeDialogBtn.addEventListener('click', () => {
+      dom.pinpointDialog.close('cancel');
+    });
+
+    dom.pinpointDialog.addEventListener('close', () => {
+      dom.pinpointDialog.returnValue = '';
+    });
+
+    dom.retryGeoBtn.addEventListener('click', () => {
+      requestBrowserLocation();
+    });
+
+    dom.pinpointForm.addEventListener('submit', async (evt) => {
+      evt.preventDefault();
+      if (!dom.pinpointForm.reportValidity()) return;
+
+      const userName = dom.userNameInput.value.trim();
+      if (!userName) return;
+
+      dom.submitPinpointBtn.disabled = true;
+      dom.submitPinpointBtn.textContent = 'Locating…';
+
+      let coords = state.detectedCoords;
+      if (!coords && dom.manualCoordsSection.classList.contains('is-hidden')) {
+        coords = await requestBrowserLocation();
+      }
+
+      if (!coords) {
+        const manualLat = parseFloat(dom.manualLatInput.value);
+        const manualLon = parseFloat(dom.manualLonInput.value);
+        if (!Number.isNaN(manualLat) && !Number.isNaN(manualLon)) {
+          coords = { latitude: manualLat, longitude: manualLon };
+        }
+      }
+
+      dom.submitPinpointBtn.disabled = false;
+      dom.submitPinpointBtn.textContent = 'Pinpoint & Save to Firebase';
+
+      if (!coords) {
+        dom.manualLatInput.focus();
+        return;
+      }
+
+      const localTime = formatLocalTime(new Date());
+      state.activeUser = { name: userName, ...coords, localTime };
+      state.lastSentTime = Date.now();
+      dom.pinpointDialog.close('submit');
+      updateUIWithPinpoint(userName, coords.latitude, coords.longitude, 'Syncing…', '', { localTime });
+      startContinuousTracking(userName);
+      await saveToFirebase(userName, coords.latitude, coords.longitude, localTime);
+    });
+
+    dom.collapsePanelBtn.addEventListener('click', () => setPanelCollapsed(true, true));
+    dom.bookmarkTab.addEventListener('click', () => setPanelCollapsed(false, true));
+    dom.floatingUserPill.addEventListener('click', () => setPanelCollapsed(false, true));
+    dom.openDialogBtn.addEventListener('click', openPinpointDialog);
+    dom.cardUpdateBtn.addEventListener('click', openPinpointDialog);
+    dom.cardStreetZoomBtn.addEventListener('click', () => {
+      if (state.activeUser) {
+        globe.diveToStreetLevel(state.activeUser.latitude, state.activeUser.longitude);
+        setPanelCollapsed(true, true);
+      }
+    });
+
+    dom.mapModeBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mapMode;
+        dom.mapModeBtns.forEach((b) => {
+          const active = b === btn;
+          b.classList.toggle('is-active', active);
+          b.setAttribute('aria-pressed', String(active));
+        });
+        globe.setMapMode(mode);
+      });
+    });
+
+    dom.toggleBuildingsBtn.addEventListener('click', () => {
+      globe.setBuildingsVisible(!globe.showBuildings);
+    });
+
+    dom.toggleLabelsBtn.addEventListener('click', () => {
+      const next = !globe.showLabels;
+      globe.setLabelsVisible(next);
+      dom.toggleLabelsBtn.classList.toggle('is-active', next);
+      dom.toggleLabelsBtn.setAttribute('aria-pressed', String(next));
+    });
+
+    dom.zoomInBtn.addEventListener('click', () => globe.zoomIn());
+    dom.zoomOutBtn.addEventListener('click', () => globe.zoomOut());
+    dom.streetDiveBtn.addEventListener('click', () => globe.diveToStreetLevel());
+    dom.tiltToggleBtn.addEventListener('click', () => globe.toggleTilt());
+    dom.compassBtn.addEventListener('click', () => globe.resetNorth());
+    dom.spaceViewBtn.addEventListener('click', () => globe.flyToSpace());
+    dom.spinToggleBtn.addEventListener('click', () => globe.toggleAutoRotate());
+
+    dom.tierBtns.forEach((btn) => {
+      btn.addEventListener('click', () => globe.setAltitudeTier(btn.dataset.tier));
+    });
+
+    window.addEventListener('resize', () => {
+      if (!state.isCollapsed) {
+        globe.setPanelPadding(getExpandedPanelPadding(), false);
+      }
+    });
+
+    async function initAutoTrackingOrDialog() {
+      let savedName = '';
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        savedName = (urlParams.get('name') || localStorage.getItem(STORAGE_KEY) || '').trim();
+      } catch {
+        savedName = '';
+      }
+
+      if (savedName) {
+        dom.userNameInput.value = savedName;
+        const coords = await requestBrowserLocation();
+        if (coords) {
+          const localTime = formatLocalTime(new Date());
+          state.activeUser = { name: savedName, ...coords, localTime };
+          state.lastSentTime = Date.now();
+          if (dom.pinpointDialog.open) {
+            dom.pinpointDialog.close('auto');
+          }
+          updateUIWithPinpoint(savedName, coords.latitude, coords.longitude, 'Live Tracking', 'is-saved', {
+            localTime
+          });
+          startContinuousTracking(savedName);
+          await saveToFirebase(savedName, coords.latitude, coords.longitude, localTime);
+          return;
+        }
+      }
+
+      openPinpointDialog();
+    }
+
+    setupAccessibleValidation();
+    subscribeToRecentPinpoints();
+    initAutoTrackingOrDialog();
+  </script>
+</body>
+</html>
